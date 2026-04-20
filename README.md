@@ -20,6 +20,7 @@ A collection of Claude Code plugins for power users who want to extend Claude Co
   - [session-wrap](#session-wrap) - Session wrap-up + history analysis toolkit
   - [team-assemble](#team-assemble) - Dynamic agent team orchestration
   - [podcast](#podcast) - Source-to-YouTube Korean podcast generator
+  - [fetch-tweet](#fetch-tweet) - Fetch tweet text and metadata without auth
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -54,6 +55,7 @@ A collection of Claude Code plugins for power users who want to extend Claude Co
 | [session-wrap](./plugins/session-wrap/) | Session wrap-up, history analysis, and session validation toolkit |
 | [team-assemble](./plugins/team-assemble/) | Dynamically assemble expert agent teams for complex tasks using Claude Code's agent teams feature |
 | [podcast](./plugins/podcast/) | Generate Korean podcast episodes from any source with OpenAI TTS and YouTube auto-upload |
+| [fetch-tweet](./plugins/fetch-tweet/) | Fetch full tweet text, author info, and engagement data from X/Twitter URLs without authentication |
 
 ## Plugin Details
 
@@ -493,6 +495,36 @@ User: "이 두 개의 아티클로 팟캐스트 만들어줘"
 # → Generates audio
 # → Uploads to YouTube
 ```
+
+---
+
+### fetch-tweet
+
+**Read any public tweet from Claude Code — no auth, no API key, no JavaScript.**
+
+Drop an X/Twitter URL and get the full tweet text (URLs expanded), author info, engagement metrics, attached media, and quoted tweets. Powered by the open-source [FxEmbed](https://github.com/FxEmbed/FxEmbed) project.
+
+**Trigger phrases:**
+- "트윗 가져와", "트윗 번역해줘"
+- "fetch this tweet", "translate this tweet"
+- Any X/Twitter URL (`x.com`, `twitter.com`)
+
+**Why this exists:**
+X removed unauthenticated tweet embeds, so reading a tweet from a script normally requires an API key or browser automation. This plugin sidesteps that by routing through `api.fxtwitter.com` — the same backend that powers fxtwitter link previews on Discord/Telegram.
+
+**Features:**
+- Zero dependencies (Python stdlib only)
+- Full tweet data including quote tweets and media
+- `--json` mode for pipeline use with other skills
+- WebFetch fallback when script execution isn't available
+
+```bash
+# Direct script usage
+python scripts/fetch_tweet.py https://x.com/sama/status/...
+python scripts/fetch_tweet.py <url> --json | jq '.tweet.text'
+```
+
+**Limitations:** Private/deleted tweets cannot be fetched.
 
 ---
 

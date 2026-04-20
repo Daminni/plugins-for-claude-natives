@@ -1,0 +1,9 @@
+{
+  "name": "fetch-tweet",
+  "version": "0.1.0",
+  "description": "Fetch full tweet text, author info, and engagement data from X/Twitter URLs without authentication",
+  "author": {
+    "name": "Team Attention",
+    "url": "https://github.com/team-attention"
+  }
+}
