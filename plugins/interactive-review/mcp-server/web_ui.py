@@ -1278,6 +1278,26 @@ def generate_html(title: str, content: str, blocks: List[Block], server_port: in
             }}
         }});
 
+        // Heartbeat: tell the MCP server we're still here. If these stop
+        // arriving (tab closed, browser crashed), the server gives up
+        // waiting and returns status="closed".
+        function sendHeartbeat() {{
+            fetch(`http://localhost:${{serverPort}}/heartbeat`, {{
+                method: 'POST',
+                keepalive: true
+            }}).catch(() => {{}});
+        }}
+        sendHeartbeat();
+        setInterval(sendHeartbeat, 3000);
+
+        // Best-effort: notify the server immediately when the tab closes,
+        // so it doesn't have to wait for heartbeat timeout.
+        window.addEventListener('pagehide', () => {{
+            try {{
+                navigator.sendBeacon(`http://localhost:${{serverPort}}/closed`);
+            }} catch (e) {{}}
+        }});
+
         // Initialize
         init();
     </script>

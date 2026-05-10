@@ -22,6 +22,7 @@ import socket
 import sys
 import tempfile
 import threading
+import time
 import uuid
 import webbrowser
 from dataclasses import asdict
@@ -39,6 +40,12 @@ from web_ui import parse_markdown, generate_html
 # Global state for the HTTP server
 _review_result: dict | None = None
 _result_event = threading.Event()
+_last_heartbeat: float = 0.0
+
+# Heartbeat tuning
+HEARTBEAT_INTERVAL_S = 3      # browser pings every 3s (see web_ui.py)
+HEARTBEAT_TIMEOUT_S = 10      # silence longer than this => browser gone
+INITIAL_GRACE_S = 15          # extra slack before first heartbeat arrives
 
 
 def find_free_port() -> int:
@@ -57,8 +64,30 @@ class ReviewHTTPHandler(SimpleHTTPRequestHandler):
         super().__init__(*args, directory=review_dir, **kwargs)
 
     def do_POST(self):
-        """Handle POST request for submitting review results."""
-        global _review_result
+        """Handle POST requests: /submit, /heartbeat, /closed."""
+        global _review_result, _last_heartbeat
+
+        if self.path == '/heartbeat':
+            _last_heartbeat = time.time()
+            self.send_response(204)
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            return
+
+        if self.path == '/closed':
+            # Browser tab/window is going away. Only honor it if Submit
+            # hasn't already produced a real result, so we don't clobber it.
+            if not _result_event.is_set():
+                _review_result = {
+                    "status": "closed",
+                    "items": [],
+                    "message": "Browser was closed before review was submitted"
+                }
+                _result_event.set()
+            self.send_response(204)
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            return
 
         if self.path == '/submit':
             content_length = int(self.headers['Content-Length'])
@@ -113,11 +142,13 @@ async def start_review_impl(content: str, title: str = "Review") -> dict[str, An
     Returns:
         Review results with status, items, and summary
     """
-    global _review_result, _result_event
+    global _review_result, _result_event, _last_heartbeat
 
-    # Reset state
+    # Reset state. Seed the heartbeat with a grace period so the browser
+    # has time to load and start pinging before we declare it dead.
     _review_result = None
     _result_event.clear()
+    _last_heartbeat = time.time() + INITIAL_GRACE_S
 
     # Create temp directory
     review_id = str(uuid.uuid4())[:8]
@@ -165,23 +196,36 @@ async def start_review_impl(content: str, title: str = "Review") -> dict[str, An
         url = f"http://localhost:{port}/index.html"
         webbrowser.open(url)
 
-        # Wait for result (timeout: 5 minutes)
-        timeout = 300
-        result_received = await asyncio.get_event_loop().run_in_executor(
-            None, lambda: _result_event.wait(timeout)
-        )
-
-        if not result_received:
-            return {
-                "status": "timeout",
-                "message": "Review timed out after 5 minutes"
-            }
+        # Wait for either Submit (the only "real" finish) or the browser
+        # going silent. We poll every 2s instead of one big blocking wait
+        # so we can also detect missing heartbeats.
+        loop = asyncio.get_event_loop()
+        while True:
+            received = await loop.run_in_executor(
+                None, lambda: _result_event.wait(2)
+            )
+            if received:
+                break
+            if time.time() - _last_heartbeat > HEARTBEAT_TIMEOUT_S:
+                # No heartbeat for too long — assume the browser is gone.
+                _review_result = {
+                    "status": "closed",
+                    "items": [],
+                    "message": "Browser was closed before review was submitted"
+                }
+                _result_event.set()
+                break
 
         if _review_result is None:
             return {
                 "status": "error",
                 "message": "No result received"
             }
+
+        # If the browser was closed (via pagehide beacon or heartbeat
+        # silence), short-circuit — no items to summarize, just clean up.
+        if _review_result.get("status") == "closed":
+            return _review_result
 
         # Enrich result with summary
         items = _review_result.get("items", [])

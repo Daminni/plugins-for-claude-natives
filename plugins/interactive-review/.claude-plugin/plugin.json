@@ -1,7 +1,7 @@
 {
   "name": "interactive-review",
   "description": "Interactive markdown review with web UI - review plans and documents with checkbox approvals and inline comments",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "author": {
     "name": "Team Attention"
   },
